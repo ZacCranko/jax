@@ -28,8 +28,8 @@ import inspect
 import math
 import typing
 from typing import (Any, Callable, Generator, Hashable, Iterable, List, Literal,
-                    NamedTuple, Optional, Sequence, Tuple, TypeVar, Union,
-                    overload, cast)
+                    Mapping, NamedTuple, Optional, Sequence, Tuple, TypeVar,
+                    Union, overload, cast)
 import weakref
 
 import numpy as np
@@ -157,6 +157,7 @@ def jit(
   backend: Optional[str] = None,
   inline: bool = False,
   abstracted_axes: Optional[Any] = None,
+  _override_lowering_rules: Optional[Mapping[core.Primitive, mlir.LoweringRule]] = None
 ) -> stages.Wrapped:
   """Sets up ``fun`` for just-in-time compilation with XLA.
 
@@ -252,7 +253,9 @@ def jit(
     inline: Specify whether this function should be inlined into enclosing
       jaxprs (rather than being represented as an application of the xla_call
       primitive with its own subjaxpr). Default False.
-
+    _override_lowering_rules: If defined, it contains user-defined lowering rules
+      for certain primitives, which should be given higher-priority than Jax's
+      lowering rules.
   Returns:
     A wrapped version of ``fun``, set up for just-in-time compilation.
 
@@ -304,7 +307,8 @@ def jit(
       in_shardings, out_shardings, device, backend)
   return pjit.post_infer_params(fun, infer_params, static_argnums,
                                 static_argnames, donate_argnums,
-                                abstracted_axes, has_explicit_sharding)
+                                abstracted_axes, has_explicit_sharding,
+                                _override_lowering_rules)
 
 
 @contextmanager

@@ -17,7 +17,7 @@ import inspect
 import logging
 import numpy as np
 from typing import (Callable, Sequence, Tuple, Union, cast, List, Optional,
-                    Iterable, NamedTuple, Any)
+                    Iterable, Mapping, NamedTuple, Any)
 import itertools as it
 from functools import partial, lru_cache
 import threading
@@ -326,7 +326,8 @@ def pre_infer_params(fun, in_shardings, out_shardings,
 
 def post_infer_params(fun, infer_params_fn, static_argnums, static_argnames,
                       donate_argnums, abstracted_axes,
-                      pjit_has_explicit_sharding):
+                      pjit_has_explicit_sharding,
+                      override_lowering_rules: Optional[Mapping[core.Primitive, mlir.LoweringRule]] = None,):
   if abstracted_axes is None:
     wrapped = _cpp_pjit(fun, infer_params_fn, static_argnums, static_argnames,
                         donate_argnums, pjit_has_explicit_sharding)
@@ -346,7 +347,8 @@ def post_infer_params(fun, infer_params_fn, static_argnums, static_argnames,
         params['jaxpr'], in_shardings, params['out_shardings'],
         params['resource_env'], params['donated_invars'], params['name'],
         params['keep_unused'], params['inline'], always_lower=True,
-        lowering_platform=_experimental_lowering_platform)
+        lowering_platform=_experimental_lowering_platform,
+        override_lowering_rules=override_lowering_rules)
 
     if kwargs:
       args_kwargs_in_tree = in_tree
@@ -564,6 +566,7 @@ def pjit(
     backend: Optional[str] = None,
     inline: bool = False,
     abstracted_axes: Optional[Any] = None,
+    _override_lowering_rules: Optional[Mapping[core.Primitive, mlir.LoweringRule]] = None
 ) -> stages.Wrapped:
   """Makes ``fun`` compiled and automatically partitioned across multiple devices.
 
@@ -696,7 +699,9 @@ def pjit(
       backend you want before passing them to jit.
       Optional, a string representing the XLA backend: ``'cpu'``, ``'gpu'``, or
       ``'tpu'``.
-
+    _override_lowering_rules: If defined, it contains user-defined lowering rules
+      for certain primitives, which should be given higher-priority than Jax's
+      lowering rules.
   Returns:
     A wrapped version of ``fun``, set up for just-in-time compilation and
     automatically partitioned by the mesh available at each call site.
@@ -741,7 +746,7 @@ def pjit(
       in_shardings, out_shardings, device, backend)
   return post_infer_params(fun, infer_params, static_argnums, static_argnames,
                            donate_argnums, abstracted_axes,
-                           has_explicit_sharding)
+                           has_explicit_sharding, _override_lowering_rules)
 
 
 def hashable_pytree(pytree):
@@ -1192,7 +1197,8 @@ def _pjit_lower_cached(
     inline: bool,
     always_lower: bool,
     *,
-    lowering_platform: Optional[str]):
+    lowering_platform: Optional[str],
+    override_lowering_rules: Optional[Mapping[core.Primitive, mlir.LoweringRule]] = None):
   in_shardings: Tuple[PjitShardingMinusUnspecified, ...] = cast(
       Tuple[PjitShardingMinusUnspecified, ...], sdat_in_shardings.shardings)
   out_shardings: Tuple[PjitSharding, ...] = sdat_out_shardings.shardings
@@ -1243,7 +1249,8 @@ def _pjit_lower_cached(
         keep_unused=keep_unused, inline=inline, always_lower=always_lower,
         devices_from_context=(
             None if mesh is None or mesh.empty else list(mesh.devices.flat)),
-        lowering_platform=lowering_platform)
+        lowering_platform=lowering_platform,
+        override_lowering_rules=override_lowering_rules)
 
 
 def pjit_staging_rule(trace, *args, **params):
