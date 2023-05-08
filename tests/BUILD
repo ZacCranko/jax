@@ -1124,3 +1124,12 @@ filegroup(
         "//third_party/py/jax:__subpackages__",
     ],
 )
+
+jax_test(
+    name = "pjrt_gpu_plugin_test",
+    srcs = ["pjrt_gpu_plugin_test.py"],
+    disable_backends = [
+        "tpu",
+        "cpu",
+    ],
+)
