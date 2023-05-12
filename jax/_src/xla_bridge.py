@@ -20,11 +20,13 @@ XLA. There are also a handful of related casting utilities.
 """
 
 from functools import partial, lru_cache
+import importlib
 import io
 import json
 import logging
 import os
 import platform as py_platform
+import pkgutil
 import threading
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Union
 import warnings
@@ -305,6 +307,79 @@ def _get_pjrt_plugin_config(
   return (config['library_path'], config.get('create_options'))
 
 
+def _is_shared_object(filename: str) -> bool:
+  """Checks whether the file is a shared object from its extension."""
+  if py_platform.system() == 'Darwin':
+    return filename.endswith('.dylib')
+
+  if py_platform.system() == 'Windows':
+    return filename.endswith('.dll')
+
+  if py_platform.system() == 'Linux':
+    if filename.endswith('.so'):
+      return True
+    index = filename.rfind('.so.')
+    if index == -1:
+      return False
+    else:
+      # A shared object with the API version in filename
+      return filename[index + 4].isdecimal()
+
+  return False
+
+
+def _append_plugin_name_path_env(name: str, path: str) -> None:
+  env_value = os.getenv('PJRT_NAMES_AND_LIBRARY_PATHS', '')
+  if env_value != '':  # pylint: disable=g-explicit-bool-comparison
+    env_value += ','
+  env_value += f'{name}{os.path.pathsep}{path}'
+  os.environ['PJRT_NAMES_AND_LIBRARY_PATHS'] = env_value
+
+
+def discover_pjrt_plugins() -> None:
+  """Discovers PJRT plugins and appends the plugin name and path to an env var.
+
+  Discovers modules that begins with env var PJRT_PLUGIN_PREFIX. Imports these
+  modules and discovers all the shared object files or json files in the
+  directory of module.__file__. Append the plugin_name and shared object or json
+  file path to env var PJRT_NAMES_AND_LIBRARY_PATHS. If there is only one shared
+  object/json file in that directory, the package name is used as the plugin
+  name; otherwise, {package name}_{file_name} is used as the plugin name.
+  """
+  discovered_plugin_modules = {
+      name: importlib.import_module(name)
+      for _, name, _ in pkgutil.iter_modules()
+      if name.startswith(os.getenv('PJRT_PLUGIN_PREFIX', 'jax_pjrt_plugin'))
+  }
+  for name, module in discovered_plugin_modules.items():
+    module_file = module.__file__
+    if module_file is None:
+      continue
+    dir = os.path.dirname(module_file)
+    plugin_filepaths = [
+        os.path.join(dir, f)
+        for f in os.listdir(dir)
+        if _is_shared_object(f) or f.endswith('.json')
+    ]
+
+    if len(plugin_filepaths) == 1:
+      _append_plugin_name_path_env(name, plugin_filepaths[0])
+      continue
+
+    added_libraries = set()
+    for filepath in plugin_filepaths:
+      if filepath.endswith('.json'):
+        library, _ = _get_pjrt_plugin_config(filepath)
+      else:
+        library = filepath
+      # Shared object sepcifid in a json file will be loaded from the json file,
+      # and will not be loaded directly.
+      if library not in added_libraries:
+        plugin_name = f'{name}_{os.path.basename(filepath)}'
+        _append_plugin_name_path_env(plugin_name, filepath)
+        added_libraries.add(library)
+
+
 def register_pjrt_plugin_factories(plugins_from_env: str) -> None:
   """Registers backend factories for PJRT plugins.
 
@@ -351,6 +426,7 @@ def register_pjrt_plugin_factories(plugins_from_env: str) -> None:
     )
 
 
+discover_pjrt_plugins()
 # The plugin names and paths are set in env var PJRT_NAMES_AND_LIBRARY_PATHS,
 # in the format of 'name1:path1,name2:path2' ('name1;path1,name2;path2' for
 # windows).
