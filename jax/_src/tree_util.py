@@ -14,21 +14,31 @@
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass
 import difflib
 import functools
-from functools import partial
 import operator as op
 import textwrap
-from typing import (Any, Callable, Hashable, Iterable, List, NamedTuple,
-                    Optional, Tuple, Type, TypeVar, Union, overload)
 import warnings
+from dataclasses import dataclass
+from functools import partial
+from typing import (
+  Any,
+  Callable,
+  Hashable,
+  Iterable,
+  List,
+  NamedTuple,
+  Optional,
+  Tuple,
+  Type,
+  TypeVar,
+  Union,
+  overload,
+)
 
 from jax._src import traceback_util
 from jax._src.lib import pytree
-from jax._src.util import safe_zip
-from jax._src.util import unzip2
-
+from jax._src.util import safe_zip, unzip2
 
 traceback_util.register_exclusion(__file__)
 
@@ -263,22 +273,25 @@ no_initializer = object()
 
 @overload
 def tree_reduce(function: Callable[[T, Any], T],
-                tree: Any) -> T:
+                tree: Any, 
+                is_leaf: Optional[Callable[[Any], bool]] = None) -> T:
     ...
 
 @overload
 def tree_reduce(function: Callable[[T, Any], T],
                 tree: Any,
-                initializer: T) -> T:
+                initializer: T,
+                is_leaf: Optional[Callable[[Any], bool]] = None) -> T:
     ...
 
 def tree_reduce(function: Callable[[T, Any], T],
                 tree: Any,
-                initializer: Any = no_initializer) -> T:
+                initializer: Any = no_initializer,
+                is_leaf: Optional[Callable[[Any], bool]] = None) -> T:
   if initializer is no_initializer:
-    return functools.reduce(function, tree_leaves(tree))
+    return functools.reduce(function, tree_leaves(tree,is_leaf=is_leaf))
   else:
-    return functools.reduce(function, tree_leaves(tree), initializer)
+    return functools.reduce(function, tree_leaves(tree,is_leaf=is_leaf), initializer)
 
 def tree_all(tree: Any) -> bool:
   return all(tree_leaves(tree))
