@@ -273,7 +273,8 @@ no_initializer = object()
 
 @overload
 def tree_reduce(function: Callable[[T, Any], T],
-                tree: Any, 
+                tree: Any,
+                *,
                 is_leaf: Optional[Callable[[Any], bool]] = None) -> T:
     ...
 
