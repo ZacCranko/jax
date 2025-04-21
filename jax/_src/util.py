@@ -661,3 +661,7 @@ def test_event(name: str, *args) -> None:
 
 if hasattr(jaxlib_utils, "Mutex"):
   Mutex = jaxlib_utils.Mutex
+
+def pprint_bytes(num_bytes: int, _units=['B','KB','MB','GB']):
+    unit, *rest_units = _units
+    return f"{num_bytes:.2f}{unit}" if  num_bytes < 1024 else pprint_bytes(num_bytes >> 10, rest_units)
